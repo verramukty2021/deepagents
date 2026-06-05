@@ -413,7 +413,7 @@ class CodeInterpreterMiddleware(AgentMiddleware[REPLState, ContextT, ResponseT])
         state["_quickjs_slot_id"] = slot_id
         return slot_id
 
-    def _slot_update_for_runtime(self) -> dict[str, str]:
+    def _slot_update_for_runtime(self) -> dict[str, Any]:
         """Build a private state update with a fresh slot id when needed."""
         return {"_quickjs_slot_id": _new_slot_id()}
 
