@@ -672,17 +672,17 @@ def test_after_agent_evicts_current_thread_slot() -> None:
     """``after_agent`` snapshots state and evicts the resolved slot."""
     mw = CodeInterpreterMiddleware()
     try:
-        # Force a slot to exist for the middleware's fallback slot id.
-        repl = mw._registry.get(mw._fallback_slot_id)
+        slot_id = "qjs_test_after_agent_sync"
+        repl = mw._registry.get(slot_id)
         repl.eval_sync("globalThis.counter = 10")
-        assert mw._fallback_slot_id in mw._registry._slots
+        assert slot_id in mw._registry._slots
         update = mw.after_agent(
-            state={"_quickjs_slot_id": mw._fallback_slot_id},
+            state={"_quickjs_slot_id": slot_id},
             runtime=MagicMock(),
         )
         assert isinstance(update, dict)
         assert isinstance(update["_quickjs_snapshot_payload"], bytes)
-        assert mw._fallback_slot_id not in mw._registry._slots
+        assert slot_id not in mw._registry._slots
     finally:
         mw._registry.close()
 
@@ -691,16 +691,17 @@ async def test_aafter_agent_evicts_current_thread_slot() -> None:
     """``aafter_agent`` snapshots state and evicts the resolved slot."""
     mw = CodeInterpreterMiddleware()
     try:
-        repl = mw._registry.get(mw._fallback_slot_id)
+        slot_id = "qjs_test_after_agent_async"
+        repl = mw._registry.get(slot_id)
         repl.eval_sync("globalThis.counter = 10")
-        assert mw._fallback_slot_id in mw._registry._slots
+        assert slot_id in mw._registry._slots
         update = await mw.aafter_agent(
-            state={"_quickjs_slot_id": mw._fallback_slot_id},
+            state={"_quickjs_slot_id": slot_id},
             runtime=MagicMock(),
         )
         assert isinstance(update, dict)
         assert isinstance(update["_quickjs_snapshot_payload"], bytes)
-        assert mw._fallback_slot_id not in mw._registry._slots
+        assert slot_id not in mw._registry._slots
     finally:
         mw._registry.close()
 
@@ -709,14 +710,15 @@ def test_after_agent_snapshot_roundtrip_with_before_agent() -> None:
     """Snapshots from ``after_agent`` restore into fresh slots in ``before_agent``."""
     mw = CodeInterpreterMiddleware()
     try:
-        repl = mw._registry.get(mw._fallback_slot_id)
+        slot_id = "qjs_test_snapshot_roundtrip_sync"
+        repl = mw._registry.get(slot_id)
         repl.eval_sync("const answer = 42")
         update = mw.after_agent(
-            state={"_quickjs_slot_id": mw._fallback_slot_id},
+            state={"_quickjs_slot_id": slot_id},
             runtime=MagicMock(),
         )
         assert isinstance(update, dict)
-        assert mw._fallback_slot_id not in mw._registry._slots
+        assert slot_id not in mw._registry._slots
 
         before_update = mw.before_agent(state=update, runtime=MagicMock())
         assert isinstance(before_update, dict)
@@ -730,14 +732,15 @@ async def test_aafter_agent_snapshot_roundtrip_with_abefore_agent() -> None:
     """Async snapshot roundtrip restores state in a fresh slot."""
     mw = CodeInterpreterMiddleware()
     try:
-        repl = mw._registry.get(mw._fallback_slot_id)
+        slot_id = "qjs_test_snapshot_roundtrip_async"
+        repl = mw._registry.get(slot_id)
         await repl.eval_async("const answer = 42")
         update = await mw.aafter_agent(
-            state={"_quickjs_slot_id": mw._fallback_slot_id},
+            state={"_quickjs_slot_id": slot_id},
             runtime=MagicMock(),
         )
         assert isinstance(update, dict)
-        assert mw._fallback_slot_id not in mw._registry._slots
+        assert slot_id not in mw._registry._slots
 
         before_update = await mw.abefore_agent(state=update, runtime=MagicMock())
         assert isinstance(before_update, dict)
@@ -766,14 +769,15 @@ def test_before_agent_clears_payload_on_restore_failure() -> None:
 def test_after_agent_clears_payload_on_snapshot_failure() -> None:
     mw = CodeInterpreterMiddleware()
     try:
-        repl = mw._registry.get(mw._fallback_slot_id)
+        slot_id = "qjs_test_snapshot_failure"
+        repl = mw._registry.get(slot_id)
         with patch.object(repl, "create_snapshot", side_effect=RuntimeError("boom")):
             update = mw.after_agent(
-                state={"_quickjs_slot_id": mw._fallback_slot_id},
+                state={"_quickjs_slot_id": slot_id},
                 runtime=MagicMock(),
             )
         assert update == {"_quickjs_snapshot_payload": None}
-        assert mw._fallback_slot_id not in mw._registry._slots
+        assert slot_id not in mw._registry._slots
     finally:
         mw._registry.close()
 
@@ -781,14 +785,15 @@ def test_after_agent_clears_payload_on_snapshot_failure() -> None:
 def test_after_agent_drops_payload_above_snapshot_size_cap() -> None:
     mw = CodeInterpreterMiddleware(max_snapshot_bytes=4)
     try:
-        repl = mw._registry.get(mw._fallback_slot_id)
+        slot_id = "qjs_test_snapshot_cap_sync"
+        repl = mw._registry.get(slot_id)
         with patch.object(repl, "create_snapshot", return_value=b"12345"):
             update = mw.after_agent(
-                state={"_quickjs_slot_id": mw._fallback_slot_id},
+                state={"_quickjs_slot_id": slot_id},
                 runtime=MagicMock(),
             )
         assert update == {"_quickjs_snapshot_payload": None}
-        assert mw._fallback_slot_id not in mw._registry._slots
+        assert slot_id not in mw._registry._slots
     finally:
         mw._registry.close()
 
@@ -796,18 +801,19 @@ def test_after_agent_drops_payload_above_snapshot_size_cap() -> None:
 async def test_aafter_agent_drops_payload_above_snapshot_size_cap() -> None:
     mw = CodeInterpreterMiddleware(max_snapshot_bytes=4)
     try:
-        repl = mw._registry.get(mw._fallback_slot_id)
+        slot_id = "qjs_test_snapshot_cap_async"
+        repl = mw._registry.get(slot_id)
         with patch.object(
             repl,
             "acreate_snapshot",
             new=AsyncMock(return_value=b"12345"),
         ):
             update = await mw.aafter_agent(
-                state={"_quickjs_slot_id": mw._fallback_slot_id},
+                state={"_quickjs_slot_id": slot_id},
                 runtime=MagicMock(),
             )
         assert update == {"_quickjs_snapshot_payload": None}
-        assert mw._fallback_slot_id not in mw._registry._slots
+        assert slot_id not in mw._registry._slots
     finally:
         mw._registry.close()
 
@@ -816,14 +822,15 @@ def test_snapshot_between_turns_disabled_keeps_reset_behavior() -> None:
     with pytest.warns(DeprecationWarning, match="snapshot_between_turns"):
         mw = CodeInterpreterMiddleware(snapshot_between_turns=False)
     try:
-        repl = mw._registry.get(mw._fallback_slot_id)
+        slot_id = "qjs_test_mode_turn_snapshot_disabled"
+        repl = mw._registry.get(slot_id)
         repl.eval_sync("globalThis.answer = 42")
         update = mw.after_agent(
-            state={"_quickjs_slot_id": mw._fallback_slot_id},
+            state={"_quickjs_slot_id": slot_id},
             runtime=MagicMock(),
         )
         assert update is None
-        assert mw._fallback_slot_id not in mw._registry._slots
+        assert slot_id not in mw._registry._slots
 
         before_update = mw.before_agent(
             state={"_quickjs_snapshot_payload": b"ignored"},
@@ -839,6 +846,15 @@ def test_snapshot_between_turns_disabled_keeps_reset_behavior() -> None:
 def test_mode_call_ignores_snapshot_payload() -> None:
     mw = CodeInterpreterMiddleware(mode="call")
     try:
+        slot_id = "qjs_test_mode_call_ignore_snapshot"
+        repl = mw._registry.get(slot_id)
+        repl.eval_sync("globalThis.answer = 42")
+        update = mw.after_agent(
+            state={"_quickjs_slot_id": slot_id},
+            runtime=MagicMock(),
+        )
+        assert update is None
+        assert slot_id not in mw._registry._slots
         before_update = mw.before_agent(
             state={"_quickjs_snapshot_payload": b"ignored"},
             runtime=MagicMock(),
@@ -853,9 +869,11 @@ def test_mode_call_ignores_snapshot_payload() -> None:
 async def test_mode_call_resets_state_between_tool_calls() -> None:
     mw = CodeInterpreterMiddleware(mode="call")
     try:
+        slot_id = "qjs_test_mode_call_reset_between_calls"
+        state = {"_quickjs_slot_id": slot_id}
         tool = mw.tools[0]
         runtime = ToolRuntime(
-            state={},
+            state=state,
             context={},
             config={},
             stream_writer=lambda _chunk: None,
@@ -864,24 +882,24 @@ async def test_mode_call_resets_state_between_tool_calls() -> None:
             store=None,
         )
         assert tool.coroutine is not None
-        first_repl = mw._registry.get(mw._fallback_slot_id)
-        first_runtime = mw._registry._slots[mw._fallback_slot_id].runtime
+        first_repl = mw._registry.get(slot_id)
+        first_runtime = mw._registry._slots[slot_id].runtime
         first = await tool.coroutine(
             runtime=runtime,
             code="globalThis.answer = 42; answer",
         )
         assert "<result>42</result>" in first.content
-        after_first = mw._registry.get_if_exists(mw._fallback_slot_id)
+        after_first = mw._registry.get_if_exists(slot_id)
         assert after_first is not None
         assert after_first is not first_repl
-        assert mw._registry._slots[mw._fallback_slot_id].runtime is first_runtime
+        assert mw._registry._slots[slot_id].runtime is first_runtime
 
         second = await tool.coroutine(runtime=runtime, code="typeof answer")
         assert "<result>undefined</result>" in second.content
-        after_second = mw._registry.get_if_exists(mw._fallback_slot_id)
+        after_second = mw._registry.get_if_exists(slot_id)
         assert after_second is not None
         assert after_second is not after_first
-        assert mw._registry._slots[mw._fallback_slot_id].runtime is first_runtime
+        assert mw._registry._slots[slot_id].runtime is first_runtime
     finally:
         mw._registry.close()
 

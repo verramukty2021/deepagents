@@ -580,7 +580,10 @@ def test_middleware_ptc_list_includes_prompt_block() -> None:
     from types import SimpleNamespace
 
     mw = CodeInterpreterMiddleware(ptc=["greet", "eval"])
-    req = SimpleNamespace(tools=[_greet_tool(), _echo_tool("eval")])
+    req = SimpleNamespace(
+        tools=[_greet_tool(), _echo_tool("eval")],
+        state={"_quickjs_slot_id": "qjs_test_prompt_block"},
+    )
     prompt = mw._prepare_for_call(req)
     # Greet included
     assert "async function greet(" in prompt
@@ -593,7 +596,10 @@ def test_middleware_ptc_list_of_tools_exposes_without_agent_tools() -> None:
     from types import SimpleNamespace
 
     mw = CodeInterpreterMiddleware(ptc=[_greet_tool()])
-    req = SimpleNamespace(tools=[])
+    req = SimpleNamespace(
+        tools=[],
+        state={"_quickjs_slot_id": "qjs_test_tool_only_ptc"},
+    )
     prompt = mw._prepare_for_call(req)
     assert "async function greet(" in prompt
 
@@ -608,12 +614,13 @@ async def test_ptc_install_and_eval_resolve_to_same_repl() -> None:
     from types import SimpleNamespace
 
     mw = CodeInterpreterMiddleware(ptc=["greet", "eval"])
+    state = {"_quickjs_slot_id": "qjs_test_ptc_same_slot"}
     # Simulate a model-call turn without any langgraph config present.
-    req = SimpleNamespace(tools=[_greet_tool(), _echo_tool("eval")])
+    req = SimpleNamespace(tools=[_greet_tool(), _echo_tool("eval")], state=state)
     mw._prepare_for_call(req)
     # Now invoke the eval tool directly via the middleware-owned registry.
     # The resolver should return the *same* REPL instance.
-    first = mw._registry.get(mw._fallback_slot_id)
+    first = mw._registry.get(state["_quickjs_slot_id"])
     outcome = await first.eval_async("typeof tools.greet")
     assert outcome.error_type is None, outcome.error_message
     assert outcome.result == "function"
@@ -627,9 +634,10 @@ async def test_middleware_eval_tool_returns_tool_message_only() -> None:
     command_tool = _command_tool()
     mw = CodeInterpreterMiddleware(ptc=[command_tool])
     tool = mw.tools[0]
-    mw._prepare_for_call(SimpleNamespace(tools=[command_tool, tool]))
+    state = {"_quickjs_slot_id": "qjs_test_eval_tool_message"}
+    mw._prepare_for_call(SimpleNamespace(tools=[command_tool, tool], state=state))
     runtime = ToolRuntime(
-        state={},
+        state=state,
         context={},
         config={},
         stream_writer=lambda _chunk: None,
@@ -655,9 +663,10 @@ async def test_mode_call_reinstalls_ptc_tools_for_each_eval_call() -> None:
     greet_tool = _greet_tool()
     mw = CodeInterpreterMiddleware(ptc=[greet_tool], mode="call")
     tool = mw.tools[0]
-    mw._prepare_for_call(SimpleNamespace(tools=[greet_tool, tool]))
+    state = {"_quickjs_slot_id": "qjs_test_mode_call_ptc_reinstall"}
+    mw._prepare_for_call(SimpleNamespace(tools=[greet_tool, tool], state=state))
     runtime = ToolRuntime(
-        state={},
+        state=state,
         context={},
         config={},
         stream_writer=lambda _chunk: None,

@@ -269,7 +269,6 @@ class CodeInterpreterMiddleware(AgentMiddleware[REPLState, ContextT, ResponseT])
         )
         self._ptc_prompt_cache: tuple[frozenset[str], str] | None = None
         self._ptc_tools_by_slot: dict[str, tuple[BaseTool, ...]] = {}
-        self._fallback_slot_id = _new_slot_id()
         self.tools: list[BaseTool] = [self._build_tool()]
 
     def _build_tool(self) -> BaseTool:
@@ -404,12 +403,15 @@ class CodeInterpreterMiddleware(AgentMiddleware[REPLState, ContextT, ResponseT])
         self,
         state: dict[str, Any] | None,
     ) -> str:
-        """Return the private interpreter slot id for a state/config pair."""
-        state = state or {}
+        """Return the interpreter slot id for this state, minting one if needed."""
+        if state is None:
+            return _new_slot_id()
         slot_id = state.get("_quickjs_slot_id")
         if isinstance(slot_id, str) and slot_id:
             return slot_id
-        return self._fallback_slot_id
+        slot_id = _new_slot_id()
+        state["_quickjs_slot_id"] = slot_id
+        return slot_id
 
     def _slot_update_for_runtime(self) -> dict[str, str]:
         """Build a private state update with a fresh slot id when needed."""
