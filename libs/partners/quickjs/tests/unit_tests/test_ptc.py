@@ -601,10 +601,9 @@ def test_middleware_ptc_list_of_tools_exposes_without_agent_tools() -> None:
 async def test_ptc_install_and_eval_resolve_to_same_repl() -> None:
     """PTC install and the eval tool must see the same REPL instance.
 
-    Regression: without a stable fallback thread id, each call to
-    ``_resolve_thread_id`` minted a fresh UUID, so ``wrap_model_call``
-    installed tools on one REPL and the eval ran on another — JS saw
-    ``ReferenceError: tools is not defined``.
+    Regression: without a stable fallback slot id, install and eval could
+    target different REPL contexts, and JS saw ``ReferenceError: tools is
+    not defined``.
     """
     from types import SimpleNamespace
 
@@ -614,7 +613,7 @@ async def test_ptc_install_and_eval_resolve_to_same_repl() -> None:
     mw._prepare_for_call(req)
     # Now invoke the eval tool directly via the middleware-owned registry.
     # The resolver should return the *same* REPL instance.
-    first = mw._registry.get(mw._fallback_thread_id)
+    first = mw._registry.get(mw._fallback_slot_id)
     outcome = await first.eval_async("typeof tools.greet")
     assert outcome.error_type is None, outcome.error_message
     assert outcome.result == "function"
