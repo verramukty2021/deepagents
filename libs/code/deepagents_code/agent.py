@@ -59,6 +59,7 @@ from deepagents_code.config import (
     console,
     get_default_coding_instructions,
     get_glyphs,
+    get_langsmith_project_name,
     settings,
 )
 from deepagents_code.configurable_model import ConfigurableModelMiddleware
@@ -965,32 +966,32 @@ def _add_interrupt_on() -> dict[str, InterruptOnConfig]:
     """
     execute_interrupt_config: InterruptOnConfig = {
         "allowed_decisions": ["approve", "reject"],
-        "description": _format_execute_description,  # type: ignore[typeddict-item]  # Callable description narrower than TypedDict expects
+        "description": _format_execute_description,  # ty: ignore[invalid-argument-type]  # Callable description narrower than TypedDict expects
     }
 
     write_file_interrupt_config: InterruptOnConfig = {
         "allowed_decisions": ["approve", "reject"],
-        "description": _format_write_file_description,  # type: ignore[typeddict-item]  # Callable description narrower than TypedDict expects
+        "description": _format_write_file_description,  # ty: ignore[invalid-argument-type]  # Callable description narrower than TypedDict expects
     }
 
     edit_file_interrupt_config: InterruptOnConfig = {
         "allowed_decisions": ["approve", "reject"],
-        "description": _format_edit_file_description,  # type: ignore[typeddict-item]  # Callable description narrower than TypedDict expects
+        "description": _format_edit_file_description,  # ty: ignore[invalid-argument-type]  # Callable description narrower than TypedDict expects
     }
 
     web_search_interrupt_config: InterruptOnConfig = {
         "allowed_decisions": ["approve", "reject"],
-        "description": _format_web_search_description,  # type: ignore[typeddict-item]  # Callable description narrower than TypedDict expects
+        "description": _format_web_search_description,  # ty: ignore[invalid-argument-type]  # Callable description narrower than TypedDict expects
     }
 
     fetch_url_interrupt_config: InterruptOnConfig = {
         "allowed_decisions": ["approve", "reject"],
-        "description": _format_fetch_url_description,  # type: ignore[typeddict-item]  # Callable description narrower than TypedDict expects
+        "description": _format_fetch_url_description,  # ty: ignore[invalid-argument-type]  # Callable description narrower than TypedDict expects
     }
 
     task_interrupt_config: InterruptOnConfig = {
         "allowed_decisions": ["approve", "reject"],
-        "description": _format_task_description,  # type: ignore[typeddict-item]  # Callable description narrower than TypedDict expects
+        "description": _format_task_description,  # ty: ignore[invalid-argument-type]  # Callable description narrower than TypedDict expects
     }
 
     async_subagent_interrupt_config: InterruptOnConfig = {
@@ -1211,6 +1212,18 @@ def create_cli_agent(
             middleware.append(ConfigurableModelMiddleware())
         if restrictive_shell_allow_list is not None:
             middleware.append(ShellAllowListMiddleware(restrictive_shell_allow_list))
+        # Subagents share the on-disk filesystem backend and can edit the user
+        # AGENTS.md, so they get the same managed onboarding-name block guard as
+        # the main agent. Gated on memory because the block only exists when
+        # memory is enabled.
+        if enable_memory:
+            from deepagents_code.memory_guard import ManagedMemoryGuardMiddleware
+
+            middleware.append(
+                ManagedMemoryGuardMiddleware(
+                    [settings.get_user_agent_md_path(assistant_id)]
+                )
+            )
         return middleware
 
     for subagent_meta in list_subagents(
@@ -1254,7 +1267,7 @@ def create_cli_agent(
         custom_subagents.append(general_purpose_subagent)
 
     # Build middleware stack based on enabled features
-    agent_middleware = [
+    agent_middleware: list[AgentMiddleware[Any, Any]] = [
         ConfigurableModelMiddleware(),
         _FilesystemEmptyResultMiddleware(),
     ]
@@ -1287,6 +1300,18 @@ def create_cli_agent(
             MemoryMiddleware(
                 backend=FilesystemBackend(virtual_mode=False),
                 sources=memory_sources,
+            )
+        )
+
+        # Protect the machine-managed onboarding-name block in the user
+        # AGENTS.md from being rewritten by agent file edits. The block's
+        # markers are HTML comments stripped before injection, so the model
+        # can't see the boundary and would otherwise clobber it.
+        from deepagents_code.memory_guard import ManagedMemoryGuardMiddleware
+
+        agent_middleware.append(
+            ManagedMemoryGuardMiddleware(
+                [settings.get_user_agent_md_path(assistant_id)]
             )
         )
 
@@ -1395,7 +1420,12 @@ def create_cli_agent(
     # Local context middleware (git info, directory tree, etc.).
     if isinstance(backend, (_ExecutableBackend, _AsyncExecutableBackend)):
         agent_middleware.append(
-            LocalContextMiddleware(backend=backend, mcp_server_info=mcp_server_info)
+            LocalContextMiddleware(
+                backend=backend,
+                mcp_server_info=mcp_server_info,
+                tracing_project=get_langsmith_project_name(),
+                user_tracing_project=settings.user_langchain_project,
+            )
         )
 
     # Add shell allow-list middleware when interrupt_shell_only is active.
@@ -1424,7 +1454,7 @@ def create_cli_agent(
         interrupt_on = {}
     else:
         # Full HITL for destructive operations
-        interrupt_on = _add_interrupt_on()  # type: ignore[assignment]  # InterruptOnConfig is compatible at runtime
+        interrupt_on = _add_interrupt_on()  # ty: ignore[invalid-assignment]  # InterruptOnConfig is compatible at runtime
 
     # Set up composite backend with routing
     # For local FilesystemBackend, route large tool results to /tmp to avoid polluting

@@ -1148,7 +1148,7 @@ class TestCreateCliAgentSkillsSources:
         )
 
         real_middleware = RealSkillsMiddleware(
-            backend=None,  # type: ignore[arg-type]
+            backend=None,  # ty: ignore
             sources=sources,
         )
         rendered = real_middleware._format_skills_locations()
@@ -2450,9 +2450,10 @@ class TestCreateCliAgentShellMiddlewareWiring:
             subagent["name"]: subagent for subagent in kwargs["subagents"]
         }
 
-        # Implicit-model subagents (and the general-purpose fallback) get both
-        # middlewares, with the configurable-model swap ordered before the shell
-        # gate so a runtime `/model` switch applies before tools are filtered.
+        # Implicit-model subagents (and the general-purpose fallback) get
+        # configurable-model and shell middlewares, with the configurable-model
+        # swap ordered before the shell gate so a runtime `/model` switch applies
+        # before tools are filtered.
         for name in ("researcher", "general-purpose"):
             middleware_types = [
                 type(mw) for mw in subagents_by_name[name]["middleware"]
@@ -2473,6 +2474,109 @@ class TestCreateCliAgentShellMiddlewareWiring:
         assert not any(
             isinstance(mw, ConfigurableModelMiddleware) for mw in pinned_middleware
         ), "Pinned subagent must not gain configurable model middleware"
+
+    def test_subagents_get_managed_memory_guard_when_memory_enabled(
+        self, tmp_path: Path
+    ) -> None:
+        """Subagents share the disk backend, so they get the managed-block guard."""
+        from deepagents_code.memory_guard import ManagedMemoryGuardMiddleware
+
+        mock_settings = self._build_mock_settings(tmp_path)
+        mock_agent = Mock()
+        mock_agent.with_config.return_value = mock_agent
+        fake_model = _make_fake_chat_model()
+
+        subagent_meta = {
+            "name": "researcher",
+            "description": "Researches things",
+            "system_prompt": "Investigate the task thoroughly.",
+            "model": None,
+        }
+
+        with (
+            patch("deepagents_code.agent.settings", mock_settings),
+            patch("deepagents_code.agent.SkillsMiddleware"),
+            patch("deepagents_code.agent.MemoryMiddleware"),
+            patch(
+                "deepagents_code.agent.list_subagents",
+                return_value=[subagent_meta],
+            ),
+            patch(
+                "deepagents_code.agent.create_deep_agent",
+                return_value=mock_agent,
+            ) as mock_create,
+            patch(
+                "deepagents._models.init_chat_model",
+                return_value=fake_model,
+            ),
+        ):
+            create_cli_agent(
+                model="fake-model",
+                assistant_id="test",
+                enable_memory=True,
+                enable_skills=False,
+                enable_shell=False,
+            )
+
+        _, kwargs = mock_create.call_args
+        subagents_by_name = {
+            subagent["name"]: subagent for subagent in kwargs["subagents"]
+        }
+        for name in ("researcher", "general-purpose"):
+            middleware = subagents_by_name[name]["middleware"]
+            assert any(
+                isinstance(mw, ManagedMemoryGuardMiddleware) for mw in middleware
+            ), f"Expected managed memory guard on subagent {name!r}"
+
+    def test_subagents_skip_managed_memory_guard_when_memory_disabled(
+        self, tmp_path: Path
+    ) -> None:
+        """With memory off there is no managed block, so no guard is added."""
+        from deepagents_code.memory_guard import ManagedMemoryGuardMiddleware
+
+        mock_settings = self._build_mock_settings(tmp_path)
+        mock_agent = Mock()
+        mock_agent.with_config.return_value = mock_agent
+        fake_model = _make_fake_chat_model()
+
+        subagent_meta = {
+            "name": "researcher",
+            "description": "Researches things",
+            "system_prompt": "Investigate the task thoroughly.",
+            "model": None,
+        }
+
+        with (
+            patch("deepagents_code.agent.settings", mock_settings),
+            patch("deepagents_code.agent.SkillsMiddleware"),
+            patch("deepagents_code.agent.MemoryMiddleware"),
+            patch(
+                "deepagents_code.agent.list_subagents",
+                return_value=[subagent_meta],
+            ),
+            patch(
+                "deepagents_code.agent.create_deep_agent",
+                return_value=mock_agent,
+            ) as mock_create,
+            patch(
+                "deepagents._models.init_chat_model",
+                return_value=fake_model,
+            ),
+        ):
+            create_cli_agent(
+                model="fake-model",
+                assistant_id="test",
+                enable_memory=False,
+                enable_skills=False,
+                enable_shell=False,
+            )
+
+        _, kwargs = mock_create.call_args
+        for subagent in kwargs["subagents"]:
+            assert not any(
+                isinstance(mw, ManagedMemoryGuardMiddleware)
+                for mw in subagent["middleware"]
+            ), f"Subagent {subagent['name']!r} should not have the memory guard"
 
     def test_empty_string_subagent_model_treated_as_implicit(
         self, tmp_path: Path
