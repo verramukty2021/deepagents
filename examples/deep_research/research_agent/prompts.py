@@ -64,6 +64,7 @@ Simply list items with details - no introduction needed:
   [2] Industry Analysis: https://example.com/analysis
 """
 
+# Sub-Agent Prompt
 RESEARCHER_INSTRUCTIONS = """You are a research assistant conducting research on the user's input topic. For context, today's date is {date}.
 
 <Task>
@@ -129,10 +130,6 @@ Context engineering is a critical technique for AI agents [1]. Studies show that
 
 The orchestrator will consolidate citations from all sub-agents into the final report.
 </Final Response Format>
-"""
-
-TASK_DESCRIPTION_PREFIX = """Delegate a task to a specialized sub-agent with isolated context. Available agents for delegation are:
-{other_agents}
 """
 
 SUBAGENT_DELEGATION_INSTRUCTIONS = """# Sub-Agent Research Coordination
