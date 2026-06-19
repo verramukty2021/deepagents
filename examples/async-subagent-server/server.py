@@ -36,7 +36,7 @@ from typing import Any
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
-from langchain_anthropic import ChatAnthropic
+from fastapi.middleware.cors import CORSMiddleware
 from langchain_core.messages import HumanMessage
 from langchain_core.tools import tool
 
@@ -153,7 +153,7 @@ async def web_search(query: str) -> str:
 from deepagents import create_deep_agent  # noqa: E402
 
 _agent = create_deep_agent(
-    model=ChatAnthropic(model="claude-sonnet-4-5"),
+    model="openai:gpt-4o-mini",
     system_prompt=(
         "You are a thorough research agent. Investigate topics using web search and produce "
         "a well-structured research summary (300–500 words). Cite sources where possible.\n\n"
@@ -209,8 +209,40 @@ async def _lifespan(app: FastAPI):  # type: ignore[type-arg]
 
 app = FastAPI(lifespan=_lifespan)
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 # ── Routes ────────────────────────────────────────────────────────────────────
+
+@app.get("/info")
+async def info() -> dict[str, Any]:
+    """LangGraph API info endpoint — required by the LangGraph SDK on client init."""
+    return {"version": "0.0.1", "deployment_id": None, "langsmith_tenant_id": None}
+
+
+@app.get("/assistants/search")
+@app.post("/assistants/search")
+async def search_assistants() -> list[Any]:
+    """Stub for LangGraph SDK assistant discovery."""
+    return []
+
+
+@app.get("/assistants/{assistant_id}")
+async def get_assistant(assistant_id: str) -> dict[str, Any]:
+    """Stub for LangGraph SDK assistant lookup."""
+    return {"assistant_id": assistant_id, "graph_id": assistant_id, "config": {}, "metadata": {}}
+
+
+@app.get("/assistants/{assistant_id}/schemas")
+async def get_assistant_schemas(assistant_id: str) -> dict[str, Any]:
+    """Stub for LangGraph SDK schema discovery."""
+    return {"input_schema": {}, "output_schema": {}, "config_schema": {}}
+
 
 @app.get("/ok")
 async def health() -> dict[str, bool]:

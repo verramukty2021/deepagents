@@ -7,7 +7,6 @@ for conducting web research with strategic thinking and context management.
 from datetime import datetime
 
 from langchain.chat_models import init_chat_model
-from langchain_google_genai import ChatGoogleGenerativeAI
 from deepagents import create_deep_agent
 
 from research_agent.prompts import (
@@ -29,8 +28,7 @@ research_sub_agent = {
 }
 
 
-# Model Open AI
-model = init_chat_model(model="openai:gpt-5.4-nano", temperature=0.0)
+model = init_chat_model(model="openai:gpt-4o-mini", temperature=0.0)
 
 
 # ------------------------------------------------------
@@ -44,15 +42,19 @@ INSTRUCTIONS = (
     + "\n\n"
     + SUBAGENT_DELEGATION_INSTRUCTIONS.format(
         max_concurrent_research_units=3,
-        max_researcher_iterations=3,
+        max_researcher_iterations=1,
     )
 )
 # ------------------------------------------------------
 
 # Create the agent
+# recursion_limit = hard cap jumlah node execution di LangGraph.
+# Kalkulasi worst case:
+#   orchestrator steps (~15) + 3 sub-agent x 15 steps (~45) = ~60
+# Set 100 memberi ruang aman tanpa risiko infinite loop.
 agent = create_deep_agent(
     model=model,
     tools=[tavily_search, think_tool],
     system_prompt=INSTRUCTIONS,
     subagents=[research_sub_agent],
-)
+).with_config({"recursion_limit": 200})

@@ -26,7 +26,6 @@ import uuid
 from pathlib import Path
 
 from dotenv import load_dotenv
-from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
 
@@ -58,7 +57,7 @@ checkpointer = MemorySaver()
 thread_id = str(uuid.uuid4())
 
 supervisor = create_deep_agent(
-    model=ChatAnthropic(model="claude-sonnet-4-5"),
+    model="openai:gpt-4o-mini",
     checkpointer=checkpointer,
     system_prompt=(
         "You are a research supervisor coordinating a background researcher agent.\n\n"
