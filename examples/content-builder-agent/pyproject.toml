@@ -5,8 +5,10 @@ description = "A content writer agent configured entirely through files on disk"
 requires-python = ">=3.11"
 dependencies = [
     "deepagents>=0.6.8",
-    "google-genai>=2.8.0",
-    "pillow>=12.2.0",
+    "langchain-openai>=0.3.0",
+    "python-dotenv>=1.0.0",
+    "langsmith>=0.2.0",
+    "openai>=1.0.0",
     "pyyaml>=6.0.3",
     "rich>=15.0.0",
     "tavily-python>=0.7.25",

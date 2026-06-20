@@ -2,6 +2,9 @@
 import warnings
 warnings.filterwarnings("ignore", message="Core Pydantic V1 functionality")
 
+from dotenv import load_dotenv
+load_dotenv()
+
 """
 Content Builder Agent
 
@@ -40,6 +43,33 @@ EXAMPLE_DIR = Path(__file__).parent
 console = Console()
 
 
+def _normalize_content_path(file_path: str) -> Path:
+    """Force content files to their correct folder regardless of what the agent sends."""
+    p = Path(file_path)
+    name = p.name  # e.g. "rise-of-agentic-ai.md" or "post.md"
+    parts = p.parts
+
+    # Detect content type from path
+    for part in parts:
+        if part == "blogs":
+            slug = next((p for p in parts if p not in ("blogs", "post.md", name) and p), name.replace(".md", ""))
+            return EXAMPLE_DIR / "blogs" / slug / "post.md"
+        if part in ("linkedin",):
+            slug = next((p for p in parts if p not in ("linkedin", "post.md", name) and p), name.replace(".md", ""))
+            return EXAMPLE_DIR / "linkedin" / slug / "post.md"
+        if part in ("tweets",):
+            slug = next((p for p in parts if p not in ("tweets", "thread.md", name) and p), name.replace(".md", ""))
+            return EXAMPLE_DIR / "tweets" / slug / "thread.md"
+
+    # Fallback: infer from filename
+    slug = name.replace(".md", "").replace(".txt", "")
+    if "linkedin" in file_path.lower():
+        return EXAMPLE_DIR / "linkedin" / slug / "post.md"
+    if any(x in file_path.lower() for x in ("tweet", "twitter", "thread")):
+        return EXAMPLE_DIR / "tweets" / slug / "thread.md"
+    return EXAMPLE_DIR / "blogs" / slug / "post.md"
+
+
 # Web search tool for the researcher subagent
 @tool
 def web_search(
@@ -70,6 +100,28 @@ def web_search(
         return {"error": f"Search failed: {e}"}
 
 
+def _generate_image_openai(prompt: str, output_path: Path) -> str:
+    import base64
+    import openai
+
+    client = openai.OpenAI()
+    response = client.images.generate(
+        model="gpt-image-1",
+        prompt=prompt[:4000],
+        size="1024x1024",
+        quality="low",
+        n=1,
+    )
+
+    image_data = response.data[0].b64_json
+    if not image_data:
+        return "No image generated"
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_bytes(base64.b64decode(image_data))
+    return f"Image saved to {output_path}"
+
+
 @tool
 def generate_cover(prompt: str, slug: str) -> str:
     """Generate a cover image for a blog post.
@@ -79,23 +131,8 @@ def generate_cover(prompt: str, slug: str) -> str:
         slug: Blog post slug. Image saves to blogs/<slug>/hero.png
     """
     try:
-        from google import genai
-
-        client = genai.Client()
-        response = client.models.generate_content(
-            model="gemini-2.5-flash-image",
-            contents=[prompt],
-        )
-
-        for part in response.parts:
-            if part.inline_data is not None:
-                image = part.as_image()
-                output_path = EXAMPLE_DIR / "blogs" / slug / "hero.png"
-                output_path.parent.mkdir(parents=True, exist_ok=True)
-                image.save(str(output_path))
-                return f"Image saved to {output_path}"
-
-        return "No image generated"
+        output_path = EXAMPLE_DIR / "blogs" / slug / "hero.png"
+        return _generate_image_openai(prompt, output_path)
     except Exception as e:
         return f"Error: {e}"
 
@@ -110,25 +147,24 @@ def generate_social_image(prompt: str, platform: str, slug: str) -> str:
         slug: Post slug. Image saves to <platform>/<slug>/image.png
     """
     try:
-        from google import genai
-
-        client = genai.Client()
-        response = client.models.generate_content(
-            model="gemini-2.5-flash-image",
-            contents=[prompt],
-        )
-
-        for part in response.parts:
-            if part.inline_data is not None:
-                image = part.as_image()
-                output_path = EXAMPLE_DIR / platform / slug / "image.png"
-                output_path.parent.mkdir(parents=True, exist_ok=True)
-                image.save(str(output_path))
-                return f"Image saved to {output_path}"
-
-        return "No image generated"
+        output_path = EXAMPLE_DIR / platform / slug / "image.png"
+        return _generate_image_openai(prompt, output_path)
     except Exception as e:
         return f"Error: {e}"
+
+
+@tool
+def write_content_file(file_path: str, content: str) -> str:
+    """Write content to a file. Path is automatically normalized to the correct folder.
+
+    Args:
+        file_path: Intended file path (blogs/, linkedin/, tweets/ relative paths)
+        content: The content to write
+    """
+    normalized = _normalize_content_path(file_path)
+    normalized.parent.mkdir(parents=True, exist_ok=True)
+    normalized.write_text(content, encoding="utf-8")
+    return f"File written to {normalized}"
 
 
 def load_subagents(config_path: Path) -> list:
@@ -166,9 +202,26 @@ def load_subagents(config_path: Path) -> list:
 def create_content_writer():
     """Create a content writer agent configured by filesystem files."""
     return create_deep_agent(
+        model="openai:gpt-4o-mini",
+        system_prompt=(
+            "IMPORTANT: You MUST use tools to complete tasks — never output content as plain text.\n\n"
+            "EXACT file paths to use (never deviate from these):\n"
+            "- Blog post content: blogs/<slug>/post.md  (example: blogs/vector-databases/post.md)\n"
+            "- Blog post image: blogs/<slug>/hero.png  (example: blogs/vector-databases/hero.png)\n"
+            "- LinkedIn post content: linkedin/<slug>/post.md  (example: linkedin/code-reviews/post.md)\n"
+            "- LinkedIn post image: linkedin/<slug>/image.png  (example: linkedin/code-reviews/image.png)\n"
+            "- Twitter/X thread content: tweets/<slug>/thread.md  (example: tweets/microservices/thread.md)\n"
+            "- Twitter/X thread image: tweets/<slug>/image.png  (example: tweets/microservices/image.png)\n\n"
+            "RULES: relative paths only, never absolute paths, never /tmp, content file MUST be saved before image.\n\n"
+            "Required steps in order:\n"
+            "1. Delegate research via `task`\n"
+            "2. Save content with `write_content_file` (NOT write_file) — path will be normalized automatically\n"
+            "3. Generate image using `generate_cover` or `generate_social_image`\n"
+            "Do not stop until all 3 steps are complete."
+        ),
         memory=["./AGENTS.md"],           # Loaded by MemoryMiddleware
         skills=["./skills/"],             # Loaded by SkillsMiddleware
-        tools=[generate_cover, generate_social_image],  # Image generation
+        tools=[generate_cover, generate_social_image, write_content_file],  # Image generation + safe write
         subagents=load_subagents(EXAMPLE_DIR / "subagents.yaml"),  # Custom helper
         backend=FilesystemBackend(root_dir=EXAMPLE_DIR),
     )
@@ -238,6 +291,10 @@ class AgentDisplay:
 
 async def main():
     """Run the content writer agent with streaming output."""
+    import os
+    os.environ.setdefault("LANGCHAIN_TRACING_V2", "true")
+    os.environ.setdefault("LANGCHAIN_PROJECT", "content-builder-agent")
+
     if len(sys.argv) > 1:
         task = " ".join(sys.argv[1:])
     else:
